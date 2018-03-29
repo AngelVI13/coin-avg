@@ -67,11 +67,18 @@ func main() {
 		// i.e. index -1
 
 		// get value
-		fmt.Println(GetStringInBetween(coin_data_arr[i], "class=\"green-11\">", "</a>"))
+		worth := GetStringInBetween(coin_data_arr[i], "class=\"green-11\">", "</a>")
+		if worth == "" {
+			worth = "NULL"
+		}
 
 		// get title
 		ts := GetStringInBetween(coin_data_arr[i], "span class=\"left flag", "</a>")
-		fmt.Println(strings.Split(ts, "</span>")[1])
+		title := strings.Split(ts, "</span>")[1]
+
+		fmt.Printf("Coin-Title : %s \n Coin-Worth : %s \n\n", title, worth)
+		//fmt.Println(worth)
+		//fmt.Println(title)
 	}
 
 	// TODO: properly decode strings - now showing weird chars

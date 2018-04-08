@@ -53,15 +53,17 @@ func ReadExcelDoc(filename string) []string {
 		for _, row := range sheet.Rows {
 			// fmt.Println(row)
 			coin_data := row.Cells
-			coin_ctry := coin_data[0].String()
+			if len(coin_data) > 0 {
+				coin_ctry := coin_data[0].String()
 
-			if contains(country_list, coin_ctry) == false {
-				country_list = append(country_list, coin_ctry)
+				if contains(country_list, coin_ctry) == false {
+					country_list = append(country_list, coin_ctry)
+				}
+				//coin_country = coin_data[0].String() // Col A
+				//coin_title = coin_data[3].String() // Col D
+				//coin_date = coin_data[4].String() // Col E
+				//fmt.Printf("%s %s %s\n", coin_country, coin_title, coin_date) 
 			}
-			//coin_country = coin_data[0].String() // Col A
-			//coin_title = coin_data[3].String() // Col D
-			//coin_date = coin_data[4].String() // Col E
-			//fmt.Printf("%s %s %s\n", coin_country, coin_title, coin_date) 
 		}
 	}
 	fmt.Println(country_list)
@@ -277,12 +279,8 @@ func ExtractCoinValueForIndividualYear(coin_url string, coin_title string) []str
 
 	// Remove range of years from title so that it can later be replaced
 	// with an individual year - i.e. 5 marka 2015-2017 -> 5 marka 2016
-	title_arr := strings.SplitAfter(coin_title, " ")
-	title_stripped := ""
-	for word_c := 0; word_c < len(title_arr) - 1; word_c++ {
-		title_stripped = title_stripped + title_arr[word_c] 
-	}
-	//fmt.Println(title_stripped)
+	_, title_stripped := ExtractYearFromTitle(coin_title)
+	// fmt.Println(coin_title, title_stripped, yr_var)
 	
 	coin_list := make([]string, 0)
 	for _, table_row := range year_table_row {
@@ -295,7 +293,8 @@ func ExtractCoinValueForIndividualYear(coin_url string, coin_title string) []str
 		if strings.Compare(coin_val_str, "") == 0 {
 			coin_val_str = "0.0"
 		}
-		coin_value, err := strconv.ParseFloat(coin_val_str, 64)
+		coin_val := strings.Replace(coin_val_str, ",", "", -1) // remove ',' from coin value (1,234.25 -> 1234.25)
+		coin_value, err := strconv.ParseFloat(coin_val, 64)
 
 		coin_value_euros := 0.0
 		if err == nil {
@@ -305,7 +304,7 @@ func ExtractCoinValueForIndividualYear(coin_url string, coin_title string) []str
 		} 
 
 		if strings.Compare(coin_year, "") != 0 {
-			coin_info := title_stripped + coin_year + "|" + strconv.FormatFloat(coin_value_euros, 'f', 2, 64)
+			coin_info := title_stripped + " " + coin_year + "|" + strconv.FormatFloat(coin_value_euros, 'f', 2, 64)
 			coin_list = append(coin_list, coin_info)
 		}
 	}
@@ -353,7 +352,8 @@ func GetExchangeRateUsdToEuro() float64 {
 	for _, v := range env.Cube[0].Rates {
 		if strings.Compare(v.Currency, "USD") == 0 {
 			fmt.Println("Currency : ", v.Currency, " Rate : ", v.Rate)
-			exc_rate, err := strconv.ParseFloat(v.Rate, 64)
+			rate_value := strings.Replace(v.Rate, ",", "", -1) // remove ',' from rate (1,234.25 -> 1234.25)
+			exc_rate, err := strconv.ParseFloat(rate_value, 64)
 
 			if err != nil {
 				log.Fatalln(err)
@@ -370,33 +370,133 @@ func GetExchangeRateUsdToEuro() float64 {
 	return exchange_rate
 }
 
-func ConvertYearToGregorianCalendar(coin_country, coin_year string) string {
+func ConvertYearToGregorianCalendar(coin_country, coin_title, coin_year string) (c_title, c_year string) {
 	// Sometimes the conversion of islamic years is not 100% accurate
 	// so it might be needed to send a range of years
 	// i.e if the computation results in 1393 -> 1972.78 => send back 1972-1973
 	// Convertion formula: ( ( 32 x islamic_years ) / 33 ) + 622
-	islam_countries := [17]string{
-		"Iran", "Libya", "Morocco", "Sudan", "Kuwait",
-		"Egypt", "Tunisia", "Afghanistan", "Yemen",
-		"Syria", "Iraq", "United Arab Emirates", "Saudi Arabia",
-		"Jordan", "Qatar", "Oman", "Bahrain",
-	}
+	// islam_countries := [17]string{
+	// 	"Iran", "Libya", "Morocco", "Sudan", "Kuwait",
+	// 	"Egypt", "Tunisia", "Afghanistan", "Yemen",
+	// 	"Syria", "Iraq", "United Arab Emirates", "Saudi Arabia",
+	// 	"Jordan", "Qatar", "Oman", "Bahrain",
+	// }
 
 	// Japanese years correspond to the number of years the current emperor has ruled
 	// Therefore to find the current year, add the starting year of the rule
 	// to the current year (-1 because he ruled in the 0th year)
 	// Taisho 14 -> Taisho 1 (1912) + 14 - 1 = 1925
 	// Starting years: Taisho (1912), Showa (1926), Heisei (1989)
-	japanese_years := [3]string{
+	japanese_periods := [3]string{
 		"Taisho", "Showa", "Heisei",
 	}
 
 	// Taiwan starts counting years from the founding of
 	// the Republic of China i.e. 1912 is year 1
 	// In order to find the current year: 1912 + taiwan year - 1 = current year
-	taiwan_start_year := 1912
+	// taiwan_start_year := 1912
+
+	converted_year := "0"
+	modified_title := coin_title
+
+	if coin_yr_int, err := strconv.Atoi(coin_year); err == nil {
+		if coin_yr_int > 1600 {
+			// This is likely a valid year (gregorian cal)
+			// return without changing anything
+			return coin_title, coin_year 
+		} else {
+			// Convert year
+			switch coin_country {
+			case "Taiwan":
+				converted_year_int := 1912 + coin_yr_int - 1
+				converted_year = strconv.Itoa(converted_year_int) 
+			case "Japan":
+				// Japanese coin titles are as follows "Nomination - Period"
+				// => Extract period and remove any unnecessary whitespaces 
+				title_arr := strings.Split(coin_title, "-")
+				coin_period := strings.Replace(title_arr[1], " ", "", -1)
+
+				// Iterate over all known periods and find the best matching one
+				best_match := 0
+				best_match_period := ""
+				for _, period := range japanese_periods {
+					match_score := similartxt.SimilarText(coin_period, period)
+
+					if match_score > best_match {
+						best_match = match_score
+						best_match_period = period
+					}
+				}
+
+				base_year := 0
+				switch best_match_period {
+				case "Taisho":
+					base_year = 1912
+				case "Showa":
+					base_year = 1926
+				case "Heisei":
+					base_year = 1989
+				default:
+					// do nothing
+				}
+				converted_year_int := base_year + coin_yr_int - 1
+				converted_year = strconv.Itoa(converted_year_int)
+				// Also return a modified coin_title that does not
+				// contain the period. this is needed to ensure better
+				// matching with the results of the extracted coins
+				modified_title := title_arr[0]
+				// fmt.Println(modified_title)
+				// Remove any trailing whitespace of title
+				if strings.HasSuffix(modified_title, " ") {
+					modified_title = modified_title[:len(modified_title)-len(" ")]
+				} 
+				
+			default:
+				// Do nothing
+			}
+		} 
+	}
 	
-	return "year-goes-here"
+	return modified_title, converted_year
+}
+
+func ExtractYearFromTitle(coin_info string) (string, string) {
+	// Coin year from the extracted coin info
+	coin_info_arr := strings.SplitAfter(coin_info, " ")
+	// Ignore the first 2 parts of this array since they are the nominal and the coin
+	// i.e. 5 euro ...
+	coin_info_arr_small := coin_info_arr[2:len(coin_info_arr)]
+
+	year_str_index := 0
+	year_str := ""
+	for index, str_part := range coin_info_arr_small {
+		// Remove any spaces,commas or dashes
+		str_part_edit := strings.Replace(str_part, ",", "", -1)
+		str_part_edit = strings.Replace(str_part_edit, "-", "", -1)
+		str_part_edit = strings.Replace(str_part_edit, " ", "", -1)
+		_, err := strconv.ParseInt(str_part_edit, 10, 64)
+		if err == nil {
+			// We have found the year related string part
+			year_str = strings.Replace(str_part, ",", "", -1)
+			year_str = strings.Replace(year_str, " ", "", -1)			
+			// fmt.Printf("\nFound year ->%s<-\n", year)
+			year_str_index = index
+		}
+	}
+	//fmt.Println(coin_info_arr_small, year)
+	
+	// // Coin title (i.e. Nominal + Name of coin (marka, fening etc)) 
+	title_no_year := ""
+	for word_c := 0; word_c < len(coin_info_arr); word_c++ {
+		// Do not add the year part into the title string
+		// We need to add 2 to the year index because in the above
+		// For loop we exclude the first 2 parts(nominal and type) of the string slice
+		if word_c != year_str_index + 2 {
+			title_no_year = title_no_year + coin_info_arr[word_c] 
+		}	
+	}
+	//fmt.Println(coin_info, year, title_no_year)
+	return year_str, title_no_year
 }
 
 func MatchCoinsAndWriteToExcel(filename, country string, coins []string) {
@@ -410,6 +510,9 @@ func MatchCoinsAndWriteToExcel(filename, country string, coins []string) {
 	
 	for _, sheet := range xlFile.Sheets {
 		for _, row := range sheet.Rows {
+			if len(row.Cells) < 5 {
+				continue
+			}
 			// fmt.Println(row)
 			coin_data := row.Cells
 			coin_ctry := coin_data[0].String() // Col A
@@ -418,7 +521,9 @@ func MatchCoinsAndWriteToExcel(filename, country string, coins []string) {
 			coin_yr := coin_data[4].String() // Col E
 			// If coin country is islamic and year is <1500 -> convert to Gregorian Calendar
 			// If coin country is Japan, Taiwan and year is <200 -> convert to Gregorian Calendar 
-			//coin_yr = ConvertYearToGregorianCalendar(coin_ctry, coin_yr)
+			if coin_ctry == "Taiwan" || coin_ctry == "Japan" {
+				coin_ttle, coin_yr = ConvertYearToGregorianCalendar(coin_ctry, coin_ttle, coin_yr)
+			}
 			coin_i := coin_ttle + " " + coin_yr 
 
 			// Technically both country strings should match perfectly since they
@@ -447,16 +552,13 @@ func MatchCoinsAndWriteToExcel(filename, country string, coins []string) {
 
 					// Only match coins with the same nominal and the same year
 					if strings.Compare(ext_coin_nominal, coin_nominal) == 0 {
-						// Coin year from the extracted coin info
-						coin_info_arr := strings.SplitAfter(coin_info, " ")
-						coin_year := coin_info_arr[len(coin_info_arr)-1]
-						// Coin title (i.e. Nominal + Name of coin (marka, fening etc))
-						ext_coin_title := ""
-						for word_c := 0; word_c < len(coin_info_arr) - 1; word_c++ {
-							ext_coin_title = ext_coin_title + coin_info_arr[word_c] 
-						}
+						coin_year_ext, ext_coin_title := ExtractYearFromTitle(coin_info)
+						// fmt.Println(coin_info)
+						// fmt.Println(coin_year_ext)
+						// fmt.Println(coin_year, coin_yr)
 
-						if strings.Compare(coin_year, coin_yr) == 0 {
+						if strings.Compare(coin_year_ext, coin_yr) == 0 {
+							// fmt.Println(coin_ttle, ext_coin_title)
 							// Check if the coin in question is a commemorative coin
 							// that is if it has a description inside ()
 							if strings.Contains(coin_ttle, "(") /* && len(strings.Split(coin_ttle, " ")) > 1 */ {

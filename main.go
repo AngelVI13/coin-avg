@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"fmt"
+	"math"
 	"strings"
 	"io/ioutil"
 	"encoding/xml"
@@ -375,12 +376,27 @@ func ConvertYearToGregorianCalendar(coin_country, coin_title, coin_year string) 
 	// so it might be needed to send a range of years
 	// i.e if the computation results in 1393 -> 1972.78 => send back 1972-1973
 	// Convertion formula: ( ( 32 x islamic_years ) / 33 ) + 622
-	// islam_countries := [17]string{
-	// 	"Iran", "Libya", "Morocco", "Sudan", "Kuwait",
-	// 	"Egypt", "Tunisia", "Afghanistan", "Yemen",
-	// 	"Syria", "Iraq", "United Arab Emirates", "Saudi Arabia",
-	// 	"Jordan", "Qatar", "Oman", "Bahrain",
-	// }
+	// Since the country string is going to be extracted from the excel document
+	// Use a map to find out if a string is part of this map
+	islam_countries := map[string]bool {
+		"Iran": true,
+		"Libya": true,
+		"Morocco": true,
+		"Sudan": true,
+		"Kuwait": true,
+		"Egypt": true,
+		"Tunisia": true,
+		"Afghanistan": true,
+		"Yemen": true,
+		"Syria": true,
+		"Iraq": true,
+		"United Arab Emirates": true,
+		"Saudi Arabia": true,
+		"Jordan": true,
+		"Qatar": true,
+		"Oman": true,
+		"Bahrain": true,
+	}
 
 	// Japanese years correspond to the number of years the current emperor has ruled
 	// Therefore to find the current year, add the starting year of the rule
@@ -452,7 +468,26 @@ func ConvertYearToGregorianCalendar(coin_country, coin_title, coin_year string) 
 				} 
 				
 			default:
-				// Do nothing
+				// if coin country is an islamic country 
+				if islam_countries[coin_country] {
+					// Convertion formula: ( ( 32 x islamic_years ) / 33 ) + 622
+					converted_year_float := ( ( 32.0 * float64(coin_yr_int) ) / 33.0 ) + 622.0
+					// if year is 2014.78, returns 0.78
+					converted_year_decimals := converted_year_float - math.Floor(converted_year_float)
+					converted_year_int := 0
+					if converted_year_decimals > 0.65 {
+						converted_year_int = int(math.Floor(converted_year_float)) + 1
+					} else {
+						converted_year_int = int(math.Floor(converted_year_float))
+					}
+					// fmt.Println(coin_title, converted_year_float, converted_year_int)
+					converted_year = strconv.Itoa(converted_year_int)
+				} else {
+					// Do nothing
+					// This is not a country or year that needs to be modified
+					// return without changing anything
+					return coin_title, coin_year
+				}
 			}
 		} 
 	}
@@ -521,9 +556,9 @@ func MatchCoinsAndWriteToExcel(filename, country string, coins []string) {
 			coin_yr := coin_data[4].String() // Col E
 			// If coin country is islamic and year is <1500 -> convert to Gregorian Calendar
 			// If coin country is Japan, Taiwan and year is <200 -> convert to Gregorian Calendar 
-			if coin_ctry == "Taiwan" || coin_ctry == "Japan" {
-				coin_ttle, coin_yr = ConvertYearToGregorianCalendar(coin_ctry, coin_ttle, coin_yr)
-			}
+			//if coin_ctry == "Taiwan" || coin_ctry == "Japan" {
+			coin_ttle, coin_yr = ConvertYearToGregorianCalendar(coin_ctry, coin_ttle, coin_yr)
+			// }
 			coin_i := coin_ttle + " " + coin_yr 
 
 			// Technically both country strings should match perfectly since they

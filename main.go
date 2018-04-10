@@ -375,7 +375,7 @@ func ConvertYearToGregorianCalendar(coin_country, coin_title, coin_year string) 
 	// Sometimes the conversion of islamic years is not 100% accurate
 	// so it might be needed to send a range of years
 	// i.e if the computation results in 1393 -> 1972.78 => send back 1972-1973
-	// Convertion formula: ( ( 32 x islamic_years ) / 33 ) + 622
+	// Convertion formula: CE = ((M x 970224)/1000000)+ 621.5774
 	// Since the country string is going to be extracted from the excel document
 	// Use a map to find out if a string is part of this map
 	islam_countries := map[string]bool {
@@ -470,12 +470,14 @@ func ConvertYearToGregorianCalendar(coin_country, coin_title, coin_year string) 
 			default:
 				// if coin country is an islamic country 
 				if islam_countries[coin_country] {
-					// Convertion formula: ( ( 32 x islamic_years ) / 33 ) + 622
-					converted_year_float := ( ( 32.0 * float64(coin_yr_int) ) / 33.0 ) + 622.0
+					// Convertion formula: CE = ((M x 970224)/1000000)+ 621.5774
+					converted_year_float := ( ( float64(coin_yr_int) * 970224.0) / 1000000.0)+ 621.5774
 					// if year is 2014.78, returns 0.78
 					converted_year_decimals := converted_year_float - math.Floor(converted_year_float)
 					converted_year_int := 0
-					if converted_year_decimals > 0.65 {
+					// Years with high decimals are rounded up in order to ensure
+					// better year prediction
+					if converted_year_decimals > 0.80 {
 						converted_year_int = int(math.Floor(converted_year_float)) + 1
 					} else {
 						converted_year_int = int(math.Floor(converted_year_float))
@@ -656,8 +658,8 @@ func MatchCoinsAndWriteToExcel(filename, country string, coins []string) {
 }
 
 func main() {
-	//excel_filename := "C:\\Users\\angel.iliev\\go\\coin-avg-master\\coin_sample.xlsx"
-	excel_filename := "/home/angel/go/CoinAvg/coin_sample.xlsx"
+	excel_filename := "C:\\Users\\angel.iliev\\go\\coin-avg-master\\coin_sample.xlsx"
+	// excel_filename := "/home/angel/go/CoinAvg/coin_sample.xlsx"
 	country_list := ReadExcelDoc(excel_filename)
 	country_params := ConvertCountryListToUrlParameters(country_list)
 	//fmt.Println(country_params)

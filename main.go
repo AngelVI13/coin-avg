@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"log"
 	"net/http"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 )
 
 var USD_EUR_EXCHANGE_RATE float64
+var EXCEL_FILENAME string
 
 func contains(s []string, e string) bool {
 	for _, a := range s {
@@ -45,14 +47,10 @@ func ReadExcelDoc(filename string) []string {
 		fmt.Printf(err.Error())
 	}
 
-	// coin_country := ""
 	country_list := make([]string, 0)
-	// coin_title := ""
-	// coin_date := ""
-	
+		
 	for _, sheet := range xlFile.Sheets {
 		for _, row := range sheet.Rows {
-			// fmt.Println(row)
 			coin_data := row.Cells
 			if len(coin_data) > 0 {
 				coin_ctry := coin_data[0].String()
@@ -60,13 +58,10 @@ func ReadExcelDoc(filename string) []string {
 				if contains(country_list, coin_ctry) == false {
 					country_list = append(country_list, coin_ctry)
 				}
-				//coin_country = coin_data[0].String() // Col A
-				//coin_title = coin_data[3].String() // Col D
-				//coin_date = coin_data[4].String() // Col E
-				//fmt.Printf("%s %s %s\n", coin_country, coin_title, coin_date) 
 			}
 		}
 	}
+	fmt.Println("List of identified countries:")
 	fmt.Println(country_list)
 
 	return country_list 
@@ -94,12 +89,11 @@ func ConvertCountryListToUrlParameters(country_list []string) []string {
 		} else {
 			country_str = country_conv[0]
 		}
-		// // __________________End of formating_________________
+		// __________________End of formating_________________
 
-		//fmt.Println(country_str)
 		countries = append(countries, country_str)
 	}
-	//fmt.Println(countries)
+	
 	return countries
 }
 
@@ -124,8 +118,7 @@ func GetPageSouce(url_string string) string {
 
 	body_str := string(body)
 
-	return body_str
-	//fmt.Println(body_str)
+	return body_str 
 }
 
 func ExtractCoinValuesForCountry(country string) []string {
@@ -133,11 +126,8 @@ func ExtractCoinValuesForCountry(country string) []string {
 	
 	// First find total number of pages
 	first_page_url := "https://en.ucoin.net/catalog/?country=" + country + "&page=1"
-
 	body_str := GetPageSouce(first_page_url)
-
 	pages_raw_str := GetStringInBetween(body_str, "<div class=\"pages\">", "</div>")
-
 	pagination_arr := strings.SplitAfter(pages_raw_str, "</a>")
 
 	// The splitAfter method will return the last element as empty string
@@ -168,14 +158,9 @@ func ExtractCoinValuesPerPage(url string) []string {
 	end_region := "</div><div style=\"float: left; width: 300px;\">" 
 	
 	coin_table  := GetStringInBetween(body_str, start_region, end_region)
-	//fmt.Println( coin_table )
 	coin_num := strings.Count(coin_table, "<table class=\"coin\"")
-	//fmt.Println(coin_num)
-
 	coin_data_arr := strings.SplitAfter(coin_table, "</table>")
-	//fmt.Println(coin_data_arr[0])
-	//fmt.Println(len(coin_data_arr))
-
+	
 	coin_list := make([]string, 0)
 	for i := 0; i<coin_num; i++ {
 		// !! cover those cases
@@ -263,11 +248,6 @@ func ExtractCoinValuesPerPage(url string) []string {
 		}
 	}
 
-	// fmt.Printf("\nCoin list:\n\n")
-	// for _, item := range coin_list {
-	//  	fmt.Println(item)
-	// }
-
 	return coin_list
 }
 
@@ -281,8 +261,7 @@ func ExtractCoinValueForIndividualYear(coin_url string, coin_title string) []str
 	// Remove range of years from title so that it can later be replaced
 	// with an individual year - i.e. 5 marka 2015-2017 -> 5 marka 2016
 	_, title_stripped := ExtractYearFromTitle(coin_title)
-	// fmt.Println(coin_title, title_stripped, yr_var)
-	
+		
 	coin_list := make([]string, 0)
 	for _, table_row := range year_table_row {
 		year_row := GetStringInBetween(table_row, "<td>", "</td>")
@@ -352,7 +331,7 @@ func GetExchangeRateUsdToEuro() float64 {
 	exchange_rate := 0.0
 	for _, v := range env.Cube[0].Rates {
 		if strings.Compare(v.Currency, "USD") == 0 {
-			fmt.Println("Currency : ", v.Currency, " Rate : ", v.Rate)
+			fmt.Println("Exchange rate EUR->USD: ", v.Rate)
 			rate_value := strings.Replace(v.Rate, ",", "", -1) // remove ',' from rate (1,234.25 -> 1234.25)
 			exc_rate, err := strconv.ParseFloat(rate_value, 64)
 
@@ -410,7 +389,7 @@ func ConvertYearToGregorianCalendar(coin_country, coin_title, coin_year string) 
 	// Taiwan starts counting years from the founding of
 	// the Republic of China i.e. 1912 is year 1
 	// In order to find the current year: 1912 + taiwan year - 1 = current year
-	// taiwan_start_year := 1912
+	taiwan_start_year := 1912
 
 	converted_year := "0"
 	modified_title := coin_title
@@ -424,7 +403,7 @@ func ConvertYearToGregorianCalendar(coin_country, coin_title, coin_year string) 
 			// Convert year
 			switch coin_country {
 			case "Taiwan":
-				converted_year_int := 1912 + coin_yr_int - 1
+				converted_year_int := taiwan_start_year + coin_yr_int - 1
 				converted_year = strconv.Itoa(converted_year_int) 
 			case "Japan":
 				// Japanese coin titles are as follows "Nomination - Period"
@@ -461,7 +440,6 @@ func ConvertYearToGregorianCalendar(coin_country, coin_title, coin_year string) 
 				// contain the period. this is needed to ensure better
 				// matching with the results of the extracted coins
 				modified_title := title_arr[0]
-				// fmt.Println(modified_title)
 				// Remove any trailing whitespace of title
 				if strings.HasSuffix(modified_title, " ") {
 					modified_title = modified_title[:len(modified_title)-len(" ")]
@@ -482,10 +460,9 @@ func ConvertYearToGregorianCalendar(coin_country, coin_title, coin_year string) 
 					} else {
 						converted_year_int = int(math.Floor(converted_year_float))
 					}
-					// fmt.Println(coin_title, converted_year_float, converted_year_int)
+					
 					converted_year = strconv.Itoa(converted_year_int)
 				} else {
-					// Do nothing
 					// This is not a country or year that needs to be modified
 					// return without changing anything
 					return coin_title, coin_year
@@ -515,14 +492,12 @@ func ExtractYearFromTitle(coin_info string) (string, string) {
 		if err == nil {
 			// We have found the year related string part
 			year_str = strings.Replace(str_part, ",", "", -1)
-			year_str = strings.Replace(year_str, " ", "", -1)			
-			// fmt.Printf("\nFound year ->%s<-\n", year)
+			year_str = strings.Replace(year_str, " ", "", -1) 
 			year_str_index = index
 		}
 	}
-	//fmt.Println(coin_info_arr_small, year)
-	
-	// // Coin title (i.e. Nominal + Name of coin (marka, fening etc)) 
+		
+	// Coin title (i.e. Nominal + Name of coin (marka, fening etc)) 
 	title_no_year := ""
 	for word_c := 0; word_c < len(coin_info_arr); word_c++ {
 		// Do not add the year part into the title string
@@ -532,7 +507,7 @@ func ExtractYearFromTitle(coin_info string) (string, string) {
 			title_no_year = title_no_year + coin_info_arr[word_c] 
 		}	
 	}
-	//fmt.Println(coin_info, year, title_no_year)
+	
 	return year_str, title_no_year
 }
 
@@ -550,7 +525,6 @@ func MatchCoinsAndWriteToExcel(filename, country string, coins []string) {
 			if len(row.Cells) < 5 {
 				continue
 			}
-			// fmt.Println(row)
 			coin_data := row.Cells
 			coin_ctry := coin_data[0].String() // Col A
 			coin_rf := coin_data[1].String() // Col B
@@ -558,9 +532,7 @@ func MatchCoinsAndWriteToExcel(filename, country string, coins []string) {
 			coin_yr := coin_data[4].String() // Col E
 			// If coin country is islamic and year is <1500 -> convert to Gregorian Calendar
 			// If coin country is Japan, Taiwan and year is <200 -> convert to Gregorian Calendar 
-			//if coin_ctry == "Taiwan" || coin_ctry == "Japan" {
 			coin_ttle, coin_yr = ConvertYearToGregorianCalendar(coin_ctry, coin_ttle, coin_yr)
-			// }
 			coin_i := coin_ttle + " " + coin_yr 
 
 			// Technically both country strings should match perfectly since they
@@ -649,39 +621,54 @@ func MatchCoinsAndWriteToExcel(filename, country string, coins []string) {
 				}
 				if coin_best_match == 0 {
 					fmt.Printf("M(0): %s -> No match was found\n", coin_i)
+					euro_cell := row.AddCell()
+					euro_cell.Value = "X"
+					match_score_cell := row.AddCell()
+					match_score_cell.Value = "X"
+					match_coin_cell := row.AddCell()
+					match_coin_cell.Value = "No match was found"
 				} else {
+					euro_cell := row.AddCell()
+					euro_cell.Value = coin_value_best_match
+					match_score_cell := row.AddCell()
+					match_score_cell.Value = strconv.Itoa(coin_best_match)
+					match_coin_cell := row.AddCell()
+					match_coin_cell.Value = coin_match + " | " + coin_descrp_best_match
 					fmt.Printf("M(%d): %s -> %s | Value: %s | Commem: %s\n", coin_best_match, coin_i, coin_match, coin_value_best_match, coin_descrp_best_match)
 				}
 			}			
 		}
 	}
+	
+	err = xlFile.Save(EXCEL_FILENAME)
+	if err != nil {
+		fmt.Printf(err.Error())
+	}
 }
 
 func main() {
-	excel_filename := "C:\\Users\\angel.iliev\\go\\coin-avg-master\\coin_sample.xlsx"
-	// excel_filename := "/home/angel/go/CoinAvg/coin_sample.xlsx"
-	country_list := ReadExcelDoc(excel_filename)
-	country_params := ConvertCountryListToUrlParameters(country_list)
-	//fmt.Println(country_params)
+	// os.Args[0] returns the executable name
+	// while os.Args[1] returns the 1st parameter
+	if len(os.Args) > 1 {
+		EXCEL_FILENAME = os.Args[1]
+		if strings.Contains(EXCEL_FILENAME, "xlsx") {		
+			country_list := ReadExcelDoc(EXCEL_FILENAME)
+			country_params := ConvertCountryListToUrlParameters(country_list)
 
-	USD_EUR_EXCHANGE_RATE = GetExchangeRateUsdToEuro()
-	
-	// iterate over country list
-	for index, country := range country_list {
-		// the extractor fn requires the country in the format expected by the website
-		coin_list := ExtractCoinValuesForCountry(country_params[index])
-		//fmt.Println(coin_list, country)
-		MatchCoinsAndWriteToExcel(excel_filename, country, coin_list) 
-	}
+			USD_EUR_EXCHANGE_RATE = GetExchangeRateUsdToEuro()
+			
+			// iterate over country list
+			for index, country := range country_list {
+				// the extractor fn requires the country in the format expected by the website
+				coin_list := ExtractCoinValuesForCountry(country_params[index])
+				MatchCoinsAndWriteToExcel(EXCEL_FILENAME, country, coin_list) 
+			}
 
-	//   STEP 4.1: if the best match is low (<50%) add a comment
-	//             with the original title it was matched to
-	//             In this way you can examine manually if the
-	//             coin value was matched to the correct coin entry in excel
-
-	// NOTE: The original excel has more columns than just E,
-	//       Be careful when writing to the file so as not to
-	//       Overwrite existing data
-
-	// TODO: Add year conversion for islamic countries, japan, taiwan etc.
+			fmt.Println("Coin value extraction finished successfully!")
+		} else {
+			fmt.Println("Please provide a path(wrapped in \"\") to an xlsx file with coin information as an argument to this executable") 
+		} 
+	} else {
+		fmt.Println("Please provide a path(wrapped in \"\") to an xlsx file with coin information as an argument to this executable")
+	} 
 }

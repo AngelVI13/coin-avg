@@ -128,6 +128,12 @@ func ExtractCoinValuesForCountry(country string) []string {
 	first_page_url := "https://en.ucoin.net/catalog/?country=" + country + "&page=1"
 	body_str := GetPageSouce(first_page_url)
 	pages_raw_str := GetStringInBetween(body_str, "<div class=\"pages\">", "</div>")
+
+	if pages_raw_str == "" {
+		fmt.Println("Wrong country: ", country)
+		return extracted_coin_list
+	}
+	
 	pagination_arr := strings.SplitAfter(pages_raw_str, "</a>")
 
 	// The splitAfter method will return the last element as empty string
@@ -661,6 +667,10 @@ func main() {
 			for index, country := range country_list {
 				// the extractor fn requires the country in the format expected by the website
 				coin_list := ExtractCoinValuesForCountry(country_params[index])
+
+				if len(coin_list) == 0 {
+					continue
+				}
 				MatchCoinsAndWriteToExcel(EXCEL_FILENAME, country, coin_list) 
 			}
 
